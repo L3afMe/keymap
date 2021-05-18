@@ -7,10 +7,13 @@
 #define UNHOLD_SHIFT unregister_mods(MOD_BIT(KC_LSFT))
 #define HOLD_ALT register_mods(MOD_BIT(KC_LALT))
 #define UNHOLD_ALT unregister_mods(MOD_BIT(KC_LALT))
+#define HOLD_CTRL register_mods(MOD_BIT(KC_LCTRL))
+#define UNHOLD_CTRL unregister_mods(MOD_BIT(KC_LCTRL))
 #define HOLD_GUI register_mods(MOD_BIT(KC_LGUI))
 #define UNHOLD_GUI unregister_mods(MOD_BIT(KC_LGUI))
 #define HOLD_CTRL register_mods(MOD_BIT(KC_LCTRL))
 #define UNHOLD_CTRL unregister_mods(MOD_BIT(KC_LCTRL))
+#define CTRL KC_LCTRL
 #define ALT KC_LALT
 #define GUI KC_LGUI
 #define SHIFT KC_LSFT
@@ -28,7 +31,6 @@ enum mode {
   REPEAT_MODE
 };
 
-bool vim_enabled = false;
 bool visual_mode = false;
 
 int       currmode = INSERT_MODE;
@@ -61,6 +63,8 @@ void go_insert_mode(void) {
   currmode = INSERT_SAVE_MODE;
   visual_mode = false;
   layer_off(vim_layer);
+
+  SET_TOP_ROW(HSV_GREEN);
 }
 
 void add_to_vim_cmd(char c) {
@@ -123,6 +127,7 @@ void handle_vim_cmd(void);
 
 bool handle_cmd(char last_char, char prev_char, int num) {
   uint16_t direction = KC_RIGHT;
+  bool was_shift_held = false;
   if (num == 0) num = 1;
 
   switch (last_char) {
@@ -130,9 +135,16 @@ bool handle_cmd(char last_char, char prev_char, int num) {
     case 'j':
     case 'k':
     case 'l':
-      if (last_char == 'h')
+      if (last_char == 'l' && SHIFT_HELD) {
+          direction = KC_HOME;
+          was_shift_held = true;
+      } else if (last_char == 'h') {
         direction = KC_LEFT;
-      else if (last_char == 'j')
+        if (SHIFT_HELD) {
+          was_shift_held = true;
+          direction = KC_END;
+        }
+      } else if (last_char == 'j')
         direction = KC_DOWN;
       else if (last_char == 'k')
         direction = KC_UP;
@@ -143,7 +155,7 @@ bool handle_cmd(char last_char, char prev_char, int num) {
         case 'y':
           mod_type_num(SHIFT, direction, num);
           if (prev_char == 'y') {
-            mod_type(GUI, KC_C);
+            mod_type(CTRL, KC_C);
             tap_code(KC_LEFT);
             tap_code(KC_RIGHT);
           }
@@ -152,9 +164,11 @@ bool handle_cmd(char last_char, char prev_char, int num) {
             go_insert_mode();
           break;
         default:
+          if(was_shift_held) UNHOLD_SHIFT;
           if(visual_mode) HOLD_SHIFT;
           tap_code_num(direction, num);
           if(visual_mode) UNHOLD_SHIFT;
+          if(was_shift_held) HOLD_SHIFT;
           break;
       }
       return true;
@@ -165,8 +179,8 @@ bool handle_cmd(char last_char, char prev_char, int num) {
         case 'd':
         case 'c':
         case 'y':
-          HOLD_ALT;
-          HOLDSHIFT;
+          HOLD_CTRL;
+          HOLD_SHIFT;
           tap_code_num(KC_RIGHT, num);
           // e vs w, going one further and then back again works in both word and
           // mac apps. Will not work well if this is the last word in the document however
@@ -174,7 +188,7 @@ bool handle_cmd(char last_char, char prev_char, int num) {
             tap_code(KC_RIGHT);
             tap_code(KC_LEFT);
           }
-          UNHOLD_ALT;
+          UNHOLD_CTRL;
           UNHOLD_SHIFT;
 
           // yw, ye, copy
@@ -198,10 +212,10 @@ bool handle_cmd(char last_char, char prev_char, int num) {
         // Just w or e
         default:
           if(visual_mode) HOLD_SHIFT;
-          mod_type_num(ALT, KC_RIGHT, num);
+          mod_type_num(CTRL, KC_RIGHT, num);
           if (last_char == 'w') {
-            mod_type(ALT, KC_RIGHT);
-            mod_type(ALT, KC_LEFT);
+            mod_type(CTRL, KC_RIGHT);
+            mod_type(CTRL, KC_LEFT);
           }
           if(visual_mode) UNHOLD_SHIFT;
           return true;
@@ -285,7 +299,7 @@ bool handle_cmd(char last_char, char prev_char, int num) {
     case 'q':
       // :q is save
       if (prev_char == ':' && num == 1) {
-        mod_type(GUI, KC_Q);
+        mod_type(ALT, KC_Q);
       }
       return true;
 
@@ -293,14 +307,14 @@ bool handle_cmd(char last_char, char prev_char, int num) {
       switch (prev_char) {
         case 'd':
           HOLD_SHIFT;
-          mod_type_num(ALT, KC_LEFT, num);
+          mod_type_num(CTRL, KC_LEFT, num);
           UNHOLD_SHIFT;
           tap_code(KC_DEL);
           break;
 
         default:
           if(visual_mode) HOLD_SHIFT;
-          mod_type_num(ALT, KC_LEFT, num);
+          mod_type_num(CTRL, KC_LEFT, num);
           if(visual_mode) UNHOLD_SHIFT;
           break;
       }
@@ -507,15 +521,6 @@ void handle_vim_cmd(void) {
 }
 
 bool handle_vim_mode(uint16_t keycode, keyrecord_t *record, uint8_t vim_layer_no) {
-  if (keycode == VIMSTGL) {
-      vim_enabled = !vim_enabled;
-      return true;
-  }
-
-  if (!vim_enabled) {
-    return false;
-  }
-
   if (currmode == COMMAND_MODE) {
     switch (keycode) {
       case KC_LALT:
@@ -547,24 +552,24 @@ bool handle_vim_mode(uint16_t keycode, keyrecord_t *record, uint8_t vim_layer_no
           break;
         case KC_W:
           if(record->event.pressed)
-            HOLD_ALT;
+            HOLD_CTRL;
           else
-            UNHOLD_ALT;
+            UNHOLD_CTRL;
 
           newKey = KC_RIGHT;
           break;
         case KC_E:
           if(record->event.pressed)
-            HOLD_ALT;
+            HOLD_CTRL;
           else
-            UNHOLD_ALT;
+            UNHOLD_CTRL;
           newKey = KC_RIGHT;
           break;
         case KC_B:
           if(record->event.pressed)
-            HOLD_ALT;
+            HOLD_CTRL;
           else
-            UNHOLD_ALT;
+            UNHOLD_CTRL;
           newKey = KC_LEFT;
           break;
       }
@@ -576,8 +581,8 @@ bool handle_vim_mode(uint16_t keycode, keyrecord_t *record, uint8_t vim_layer_no
         } else {
           unregister_code(newKey);
           if(keycode == KC_W) {
-            mod_type(ALT, KC_RIGHT);
-            mod_type(ALT, KC_LEFT);
+            mod_type(CTRL, KC_RIGHT);
+            mod_type(CTRL, KC_LEFT);
           }
           if(visual_mode)
             UNHOLD_SHIFT;
@@ -608,6 +613,8 @@ bool handle_vim_mode(uint16_t keycode, keyrecord_t *record, uint8_t vim_layer_no
     layer_on(vim_layer);
     visual_mode = false;
     currcmdsize = 0;
+
+    SET_TOP_ROW(HSV_RED);
   }
 
   if (currmode == INSERT_SAVE_MODE) {
@@ -660,4 +667,4 @@ bool handle_vim_mode(uint16_t keycode, keyrecord_t *record, uint8_t vim_layer_no
   add_to_vim_cmd(ch);
   handle_vim_cmd();
   return true;
-}_
+};
